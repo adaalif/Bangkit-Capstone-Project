@@ -1,1 +1,0 @@
-{"module": null, "class_name": "CustomAutoencoder", "config": {"trainable": true, "dtype": {"module": "keras", "class_name": "DTypePolicy", "config": {"name": "float32"}, "registered_name": null}}, "registered_name": "CustomAutoencoder", "build_config": {"input_shape": [32, 768]}}

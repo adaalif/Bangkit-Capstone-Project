@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recipe Recommendations</title>
+</head>
+<body>
+    <h1>Recommended Recipes</h1>
+    <p>Based on your liked recipes (0, 5, 8), here are the top recommendations:</p>
+
+    <ul>
+        {% for recipe in recommended_recipes %}
+            <li>
+                <strong>{{ recipe['title'] }}</strong><br>
+            </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

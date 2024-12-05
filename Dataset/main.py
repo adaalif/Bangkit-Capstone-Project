@@ -1,65 +1,70 @@
-from flask import Flask, request, jsonify
-import numpy as np
+from flask import Flask, render_template
 import tensorflow as tf
-from tensorflow.keras.models import load_model
-import pickle
-from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 import pandas as pd
+from model import CustomAutoencoder  # Import your custom model class
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Initialize the Flask app
+# Initialize the Flask application
 app = Flask(__name__)
 
-# Load the model and scaler
-model = load_model("Model/autoencoder_model.h5")
-with open("model/scaler.pkl", "rb") as f:
-    scaler = pickle.load(f)
+# Load the saved model with custom layers
+try:
+    # Load the pre-trained model only once when the app starts
+    loaded_model = tf.keras.models.load_model('custom_autoencoder_model.keras', custom_objects={'CustomAutoencoder': CustomAutoencoder})
+    print("Model loaded successfully!")
+except Exception as e:
+    print(f"Error loading model: {e}")
 
-# Load recipes dataset
-recipes_df = pd.read_csv("recipes_with_final_embeddings.csv")
+# Placeholder for latent embeddings (this should ideally come from your dataset or model)
+latent_embeddings = np.load("latent_embeddings.npy")  # Replace with actual latent embeddings file
 
-@app.route('/recommend', methods=['POST'])
-def recommend():
-    try:
-        # Parse input JSON
-        input_data = request.json
-        liked_recipe_indices = input_data.get('liked_recipe_indices', [])
-        top_n = input_data.get('top_n', 5)
+# Load the dataset (replace with your actual dataset)
+recipes_df = pd.read_csv("full_format_recipes.csv")  # Assuming you have a CSV file with recipe data
 
-        if not liked_recipe_indices:
-            return jsonify({"error": "Please provide liked_recipe_indices"}), 400
+# Example recipe titles corresponding to indices (you can load this from a file, here is a simple list)
+recipe_titles = recipes_df['title'].tolist()
 
-        # Preprocess embeddings
-        bert_embeddings = np.load("sbert_embeddings.npy")
-        normalized_embeddings = scaler.transform(bert_embeddings)
-
-        # Get latent embeddings from the model
-        _, latent_embeddings = model(normalized_embeddings)
+def recommend_similar(liked_recipe_indices, latent_embeddings, top_n=5):
+    if not isinstance(latent_embeddings, np.ndarray):
         latent_embeddings = latent_embeddings.numpy()
 
-        # Validate indices
-        liked_recipe_indices = [idx for idx in liked_recipe_indices if 0 <= idx < len(latent_embeddings)]
-        if not liked_recipe_indices:
-            return jsonify({"error": "Liked recipe indices are out of bounds"}), 400
+    liked_recipe_indices = [idx for idx in liked_recipe_indices if 0 <= idx < len(latent_embeddings)]
+    if not liked_recipe_indices:
+        raise ValueError("All indices in liked_recipe_indices are out of bounds.")
 
-        # Compute similarity
-        liked_embeddings = latent_embeddings[liked_recipe_indices]
-        similarity_scores = cosine_similarity(liked_embeddings, latent_embeddings)
-        aggregated_scores = np.mean(similarity_scores, axis=0)
+    liked_embeddings = latent_embeddings[liked_recipe_indices]
 
-        # Recommend recipes
-        recommended_indices = np.argsort(-aggregated_scores)
-        recommended_indices = [idx for idx in recommended_indices if idx not in liked_recipe_indices][:top_n]
+    # Calculate cosine similarity
+    similarity_scores = cosine_similarity(liked_embeddings, latent_embeddings)
 
-        recommended_recipes = recipes_df.iloc[recommended_indices][['title', 'categories', 'ingredients']].to_dict(orient="records")
+    # Aggregate the scores for the liked recipes
+    aggregated_scores = np.mean(similarity_scores, axis=0)
 
-        return jsonify({"recommended_recipes": recommended_recipes})
+    # Get top_n recommended indices
+    recommended_indices = np.argsort(-aggregated_scores)
+    recommended_indices = [idx for idx in recommended_indices if idx not in liked_recipe_indices][:top_n]
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return recommended_indices
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({"status": "API is working fine!"})
+@app.route('/')
+def home():
+    # Automatically "like" some recipes (hardcoded indices for testing)
+    liked_recipe_indices = [0, 5, 8]  # Example liked recipes
+    top_n = 5  # Number of recommendations to return
+    
+    # Get recommendations
+    recommended_indices = recommend_similar(liked_recipe_indices, latent_embeddings, top_n=top_n)
+    
+    # Fetch the recipe details based on recommended indices
+    recommended_recipes_df = recipes_df.iloc[recommended_indices][['title', 'categories', 'ingredients']]
+    
+    # Extract the recipe titles and other details to pass to the template
+    recommended_recipes = recommended_recipes_df.to_dict(orient='records')
 
+    # Render the HTML page with recommended recipes
+    return render_template('recommendation_page.html', recommended_recipes=recommended_recipes)
+
+# Start the Flask server
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True)
