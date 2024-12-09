@@ -7,12 +7,19 @@
 </head>
 <body>
     <h1>Recommended Recipes</h1>
-    <p>Based on your liked recipes (0, 5, 8), here are the top recommendations:</p>
 
+    <!-- Display BMI status -->
+    <p><strong>BMI Status:</strong> {{ bmi_status }}</p>
+
+    <!-- Display target calories per meal -->
+    <p><strong>Target Calories Per Meal:</strong> {{ target_calories_per_meal }} kcal</p>
+
+    <!-- Display recipe recommendations -->
     <ul>
         {% for recipe in recommended_recipes %}
             <li>
-                <strong>{{ recipe['title'] }}</strong><br>
+                <h2>{{ recipe.title }}</h2>
+                <p><strong>Calories:</strong> {{ recipe.calories }} kcal</p>
             </li>
         {% endfor %}
     </ul>

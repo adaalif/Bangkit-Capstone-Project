@@ -1,20 +1,10 @@
 import numpy as np
 import pandas as pd
-import random
-import seaborn as sns
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras import layers, models, regularizers, Sequential
-from tensorflow.keras.layers import Input, Dense, Dropout, GaussianNoise
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score, davies_bouldin_score
-from sklearn.preprocessing import normalize
 from sklearn.preprocessing import StandardScaler
-from sklearn.mixture import GaussianMixture
-from scipy.stats import entropy
-from umap import UMAP
 
 # Load dataset
 recipes_df = pd.read_csv("full_format_recipes.csv")

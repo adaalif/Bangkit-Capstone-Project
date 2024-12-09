@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -10,33 +10,32 @@ app = Flask(__name__)
 
 # Load the saved model with custom layers
 try:
-    # Load the pre-trained model only once when the app starts
     loaded_model = tf.keras.models.load_model('custom_autoencoder_model.keras', custom_objects={'CustomAutoencoder': CustomAutoencoder})
     print("Model loaded successfully!")
 except Exception as e:
     print(f"Error loading model: {e}")
 
-# Placeholder for latent embeddings (this should ideally come from your dataset or model)
-latent_embeddings = np.load("latent_embeddings.npy")  # Replace with actual latent embeddings file
+# Load latent embeddings
+latent_embeddings = np.load("latent_embeddings.npy")  # Replace with your latent embeddings file
 
-# Load the dataset (replace with your actual dataset)
-recipes_df = pd.read_csv("full_format_recipes.csv")  # Assuming you have a CSV file with recipe data
-
-# Example recipe titles corresponding to indices (you can load this from a file, here is a simple list)
+# Load the dataset
+recipes_df = pd.read_csv("full_format_recipes.csv")  # Replace with your actual dataset
 recipe_titles = recipes_df['title'].tolist()
 
-def recommend_similar(liked_recipe_indices, latent_embeddings, top_n=5):
-    if not isinstance(latent_embeddings, np.ndarray):
-        latent_embeddings = latent_embeddings.numpy()
+# Utility function to recommend recipes based on latent similarity
+def recommend_similar(liked_recipe_indices, filtered_latent_embeddings, top_n=10):
+    if not isinstance(filtered_latent_embeddings, np.ndarray):
+        filtered_latent_embeddings = filtered_latent_embeddings.numpy()
 
-    liked_recipe_indices = [idx for idx in liked_recipe_indices if 0 <= idx < len(latent_embeddings)]
+    # Ensure indices are within bounds
+    liked_recipe_indices = [idx for idx in liked_recipe_indices if 0 <= idx < len(filtered_latent_embeddings)]
     if not liked_recipe_indices:
         raise ValueError("All indices in liked_recipe_indices are out of bounds.")
 
-    liked_embeddings = latent_embeddings[liked_recipe_indices]
+    liked_embeddings = filtered_latent_embeddings[liked_recipe_indices]
 
     # Calculate cosine similarity
-    similarity_scores = cosine_similarity(liked_embeddings, latent_embeddings)
+    similarity_scores = cosine_similarity(liked_embeddings, filtered_latent_embeddings)
 
     # Aggregate the scores for the liked recipes
     aggregated_scores = np.mean(similarity_scores, axis=0)
@@ -47,23 +46,91 @@ def recommend_similar(liked_recipe_indices, latent_embeddings, top_n=5):
 
     return recommended_indices
 
-@app.route('/')
-def home():
-    # Automatically "like" some recipes (hardcoded indices for testing)
-    liked_recipe_indices = [0, 5, 8]  # Example liked recipes
-    top_n = 5  # Number of recommendations to return
-    
-    # Get recommendations
-    recommended_indices = recommend_similar(liked_recipe_indices, latent_embeddings, top_n=top_n)
-    
-    # Fetch the recipe details based on recommended indices
-    recommended_recipes_df = recipes_df.iloc[recommended_indices][['title', 'categories', 'ingredients']]
-    
-    # Extract the recipe titles and other details to pass to the template
-    recommended_recipes = recommended_recipes_df.to_dict(orient='records')
+# Helper function to filter the dataset based on calorie constraints
+def filter_dataset(target_calories, tolerance=200):
+    """
+    Filters the recipes dataset to include recipes within the specified calorie range.
+    """
+    min_calories = target_calories - tolerance
+    max_calories = target_calories + tolerance
 
-    # Render the HTML page with recommended recipes
-    return render_template('recommendation_page.html', recommended_recipes=recommended_recipes)
+    filtered_df = recipes_df[
+        (recipes_df['calories'] >= min_calories) & 
+        (recipes_df['calories'] <= max_calories)
+    ]
+    return filtered_df
+
+@app.route('/', methods=['GET', 'POST'])
+def home():
+    if request.method == 'POST':
+        # Get user inputs
+        weight = float(request.form['weight'])
+        height = float(request.form['height'])
+        age = int(request.form['age'])
+        gender = int(request.form['gender'])
+        activity_level = int(request.form['activity_level'])
+
+        # Calculate BMI
+        bmi = weight / (height / 100) ** 2
+        if bmi < 18.5:
+            bmi_status = "Underweight"
+            calorie_target = maintain(weight, height, age, gender, activity_level) * 1.15
+        elif 18.5 <= bmi < 24.9:
+            bmi_status = "Ideal Weight"
+            calorie_target = maintain(weight, height, age, gender, activity_level)
+        else:
+            bmi_status = "Overweight"
+            calorie_target = maintain(weight, height, age, gender, activity_level) * 0.8
+
+        # Calculate target calories per meal
+        target_calories_per_meal = calorie_target / 3
+
+        # Step 1: Filter the dataset based on calorie constraints (±200 calories of target)
+        filtered_df = filter_dataset(target_calories_per_meal, tolerance=200)
+
+        # Update latent embeddings for the filtered dataset
+        filtered_indices = filtered_df.index.tolist()
+        filtered_latent_embeddings = latent_embeddings[filtered_indices]
+
+        # Step 2: Generate recommendations based on the filtered dataset
+        liked_recipe_indices = [0, 1, 2]  # Placeholder for liked recipes (adjust based on user interaction)
+        top_n = 10  # Number of recommendations to return
+
+        # Generate recommendations
+        filtered_recommendation_indices = recommend_similar(
+            liked_recipe_indices, filtered_latent_embeddings, top_n=top_n
+        )
+
+        # Map filtered indices back to the original dataset
+        final_recommendations = filtered_df.iloc[filtered_recommendation_indices]
+
+        # Step 3: Prepare data for rendering
+        final_recommendations_data = final_recommendations.to_dict(orient='records')
+
+        # Render the recommendations page
+        return render_template(
+            'recommendation_page.html',
+            recommended_recipes=final_recommendations_data,
+            target_calories_per_meal=round(target_calories_per_meal, 2),  # Pass target calories to template
+            bmi_status=bmi_status  # Pass BMI status to template
+        )
+
+    # Render the input form on GET requests
+    return render_template('home.html')
+
+
+# Helper function to calculate TDEE
+def maintain(weight, height, age, gender, activity_level):
+    if gender == 1:  # Male
+        bmr = 10 * weight + 6.25 * height - 5 * age + 5
+    elif gender == 2:  # Female
+        bmr = 10 * weight + 6.25 * height - 5 * age - 161
+    else:
+        return "Invalid data"
+
+    activity_multipliers = {1: 1.2, 2: 1.375, 3: 1.55, 4: 1.725, 5: 1.9}
+    tdee = bmr * activity_multipliers[activity_level]
+    return round(tdee, 2)
 
 # Start the Flask server
 if __name__ == '__main__':
