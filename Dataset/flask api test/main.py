@@ -2,7 +2,7 @@ from flask import Flask, render_template, request
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-from model import CustomAutoencoder  # Import your custom model class
+from model import CustomAutoencoder
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Initialize the Flask application
@@ -23,7 +23,7 @@ recipes_df = pd.read_csv("full_format_recipes.csv")  # Replace with your actual 
 recipe_titles = recipes_df['title'].tolist()
 
 # Utility function to recommend recipes based on latent similarity
-def recommend_similar(liked_recipe_indices, filtered_latent_embeddings, top_n=10):
+def recommend_similar(liked_recipe_indices, filtered_latent_embeddings, top_n=10, candidate_pool=30):
     if not isinstance(filtered_latent_embeddings, np.ndarray):
         filtered_latent_embeddings = filtered_latent_embeddings.numpy()
 
@@ -40,11 +40,17 @@ def recommend_similar(liked_recipe_indices, filtered_latent_embeddings, top_n=10
     # Aggregate the scores for the liked recipes
     aggregated_scores = np.mean(similarity_scores, axis=0)
 
-    # Get top_n recommended indices
-    recommended_indices = np.argsort(-aggregated_scores)
-    recommended_indices = [idx for idx in recommended_indices if idx not in liked_recipe_indices][:top_n]
+    # Take the most similar candidate_pool
+    candidate_indices = np.argsort(-aggregated_scores)
+    candidate_indices = [idx for idx in candidate_indices if idx not in liked_recipe_indices][:candidate_pool]
 
-    return recommended_indices
+    # Choose random top_n from candidate
+    if len(candidate_indices) < top_n:
+        top_n = len(candidate_indices)
+    
+    recommended_indices = np.random.choice(candidate_indices, size=top_n, replace=False)
+
+    return recommended_indices.tolist()
 
 # Helper function to filter the dataset based on calorie constraints
 def filter_dataset(target_calories, tolerance=200):
