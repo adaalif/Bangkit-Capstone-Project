@@ -1,0 +1,14 @@
+[
+    {
+      "name": "Pasta Salad",
+      "ingredients": ["Pasta", "Tomato", "Basil", "Olive Oil"],
+      "category": ["Itala", "Makanan Berat"],
+      "instructions": "Cook pasta and mix with the other ingredients."
+    },
+    {
+      "name": "Fruit Smoothie",
+      "ingredients": ["Banana", "Strawberries", "Yogurt"],
+      "instructions": "Blend all ingredients until smooth."
+    }
+  ]
+  
